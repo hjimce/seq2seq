@@ -1,0 +1,3 @@
+The text classification corpus comes from a large number of news sites that are edited by Sohu news website and classified by hand. Its classification system includes dozens of categories of nodes, the page size of about one hundred thousand documents.
+The significance of corpus statistics: to provide a larger scale standard Chinese text classification test platform.
+Application case: Chinese text classification, topic tracking and detection, etc..
