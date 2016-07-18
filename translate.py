@@ -17,7 +17,7 @@ import data_utils
 import seq2seq_model
 
 
-tf.app.flags.DEFINE_float("learning_rate", 0.5, "Learning rate.")
+'''tf.app.flags.DEFINE_float("learning_rate", 0.5, "Learning rate.")
 tf.app.flags.DEFINE_float("learning_rate_decay_factor", 0.99,
                           "Learning rate decays by this much.")
 tf.app.flags.DEFINE_float("max_gradient_norm", 5.0,
@@ -26,8 +26,8 @@ tf.app.flags.DEFINE_integer("batch_size", 64,
                             "Batch size to use during training.")
 tf.app.flags.DEFINE_integer("size", 1024, "Size of each model layer.")
 tf.app.flags.DEFINE_integer("num_layers", 3, "Number of layers in the model.")
-tf.app.flags.DEFINE_integer("en_vocab_size", 40000, "English vocabulary size.")
-tf.app.flags.DEFINE_integer("fr_vocab_size", 40000, "French vocabulary size.")
+tf.app.flags.DEFINE_integer("en_vocab_size", 400, "English vocabulary size.")
+tf.app.flags.DEFINE_integer("fr_vocab_size", 400, "French vocabulary size.")
 tf.app.flags.DEFINE_string("data_dir", "/tmp", "Data directory")
 tf.app.flags.DEFINE_string("train_dir", "/tmp", "Training directory.")
 tf.app.flags.DEFINE_integer("max_train_data_size", 0,
@@ -39,14 +39,19 @@ tf.app.flags.DEFINE_boolean("decode", False,
 tf.app.flags.DEFINE_boolean("self_test", False,
                             "Run a self-test if this is set to True.")
 
-FLAGS = tf.app.flags.FLAGS
+FLAGS = tf.app.flags.FLAGS'''
+en_vocab_size=400
+ch_vocab_size=400
+
 
 #采用pad的方式,主要是为了batch训练,提高训练效率,(5,10)表示输入序列batch的长度全部为5,输出序列为10
 #当一个英文句子进来的时候,我们首先判断它的长度,属于哪个buckets,然后在进行pad补齐
 _buckets = [(5, 10), (10, 15), (20, 25), (40, 50)]
+_buckets = [(40, 50)]
 
-
-def read_data(source_path, target_path, max_size=None):
+#逐行读取训练数据，并根据句子的长度把它存储到data_set中，返回data_set
+#比如data_set[2][3][1]就表示源语言句子长度位于5~10,目标语言句子长度位于10~15；第三个符号要求的句子，最后一维[1]表示目标语言
+def read_data(source_path, target_path):
 
   data_set = [[] for _ in _buckets]
   with tf.gfile.GFile(source_path, mode="r") as source_file:
@@ -70,68 +75,67 @@ def read_data(source_path, target_path, max_size=None):
 
 #创建模型
 def create_model(session, forward_only):
-  model = seq2seq_model.Seq2SeqModel(
-      FLAGS.en_vocab_size, FLAGS.fr_vocab_size, _buckets,
-      FLAGS.size, FLAGS.num_layers, FLAGS.max_gradient_norm, FLAGS.batch_size,
-      FLAGS.learning_rate, FLAGS.learning_rate_decay_factor,
-      forward_only=forward_only)
+  #1024表示隐藏层神经元的个数，3表示网络共三层
+  numberhidd=1024
+  numlayer=3
+  max_gradient_norm=5.#RNN防止梯度爆炸，所以需要在训练的时候，加入梯度裁剪
+  batch_size=5
+  learning_rate=0.5
+  learning_rate_decay_factor=0.99
+
+
+
+
+  model = seq2seq_model.Seq2SeqModel(en_vocab_size,ch_vocab_size , _buckets,numberhidd,numlayer,
+                                     max_gradient_norm, batch_size,learning_rate, learning_rate_decay_factor,forward_only=forward_only)
   #如果已经有训练好的模型,那么直接加载参数,否则就初始化全部的参数
-  ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
+  '''ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
   if ckpt and tf.gfile.Exists(ckpt.model_checkpoint_path):
     model.saver.restore(session, ckpt.model_checkpoint_path)
-  else:
-    session.run(tf.initialize_all_variables())
+  else:'''
+  session.run(tf.initialize_all_variables())
   return model
 
 #训练函数
 def train():
-
-  FLAGS.data_dir='.'
-  en_train, fr_train, en_dev, fr_dev, _, _ = data_utils.prepare_wmt_data(
-      FLAGS.data_dir, FLAGS.en_vocab_size, FLAGS.fr_vocab_size)
+  #创建词典，最后返回训练数据id映射文件
+  en_train, ch_train, _, _ = data_utils.prepare_wmt_data(400,400)
 
   with tf.Session() as sess:
-    # Create model.
-    print("Creating %d layers of %d units." % (FLAGS.num_layers, FLAGS.size))
     model = create_model(sess, False)
 
-    # Read data into buckets and compute their sizes.
-    print ("Reading development and training data (limit: %d)."
-           % FLAGS.max_train_data_size)
-    dev_set = read_data(en_dev, fr_dev)
-    train_set = read_data(en_train, fr_train, FLAGS.max_train_data_size)
-    train_bucket_sizes = [len(train_set[b]) for b in xrange(len(_buckets))]
-    train_total_size = float(sum(train_bucket_sizes))
+    dev_set = read_data(en_train, ch_train)#测试使用的数据
+    train_set = read_data(en_train, ch_train)#返回的数据句子，还没经过pad补齐
+    train_bucket_sizes = [len(train_set[b]) for b in xrange(len(_buckets))]#保存了每个bucket中，句子的个数
+    #print (train_set[2])
+    train_total_size = float(sum(train_bucket_sizes))#训练数据总共有多少个句子
 
-    # A bucket scale is a list of increasing numbers from 0 to 1 that we'll use
-    # to select a bucket. Length of [scale[i], scale[i+1]] is proportional to
-    # the size if i-th training bucket, as used later.
+
+    #这个是为了合理分配每个bucket中，训练的时候batchsize的大小选择问问题，选择概率用的
     train_buckets_scale = [sum(train_bucket_sizes[:i + 1]) / train_total_size
                            for i in xrange(len(train_bucket_sizes))]
 
-    # This is the training loop.
-    step_time, loss = 0.0, 0.0
-    current_step = 0
-    previous_losses = []
+    # 开始循环训练
+    print ('…………………………………………开始训练×××××××××')
     while True:
-      # Choose a bucket according to data distribution. We pick a random number
-      # in [0, 1] and use the corresponding interval in train_buckets_scale.
+      #每次训练，我们都从所有的bucket中，随机选一个bucket(根据bucket句子个数，句子多的，选中的概率大)
+      #然后从选中的bucket中，我们又随机的选出batch个句子，进行训练
       random_number_01 = np.random.random_sample()
       bucket_id = min([i for i in xrange(len(train_buckets_scale))
                        if train_buckets_scale[i] > random_number_01])
-
-      # Get a batch and make a step.
-      start_time = time.time()
+      print (bucket_id)
+      #获取batch训练数据
       encoder_inputs, decoder_inputs, target_weights = model.get_batch(
           train_set, bucket_id)
-      _, step_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,
-                                   target_weights, bucket_id, False)
-      step_time += (time.time() - start_time) / FLAGS.steps_per_checkpoint
-      loss += step_loss / FLAGS.steps_per_checkpoint
-      current_step += 1
+      print (encoder_inputs)
+      print (decoder_inputs)
+      _, step_loss, _ = model.step(sess, encoder_inputs, decoder_inputs,target_weights, bucket_id, False)
 
-      # Once in a while, we save checkpoint, print statistics, and run evals.
-      if current_step % FLAGS.steps_per_checkpoint == 0:
+
+
+
+      #验证阶段，每训练n次，我们就验证一次，打印结果
+      '''if current_step % FLAGS.steps_per_checkpoint == 0:
         # Print statistics for the previous epoch.
         perplexity = math.exp(loss) if loss < 300 else float('inf')
         print ("global step %d learning rate %.4f step-time %.2f perplexity "
@@ -156,7 +160,7 @@ def train():
                                        target_weights, bucket_id, True)
           eval_ppx = math.exp(eval_loss) if eval_loss < 300 else float('inf')
           print("  eval: bucket %d perplexity %.2f" % (bucket_id, eval_ppx))
-        sys.stdout.flush()
+        sys.stdout.flush()'''
 
 #预测阶段
 def decode():
@@ -219,7 +223,8 @@ def self_test():
                  bucket_id, False)
 
 
-def main(_):
+train()
+'''def main(_):
   if FLAGS.self_test:
     self_test()
   elif FLAGS.decode:
@@ -228,4 +233,4 @@ def main(_):
     train()
 
 if __name__ == "__main__":
-  tf.app.run()
+  tf.app.run()'''

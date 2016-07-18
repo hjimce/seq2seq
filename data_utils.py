@@ -31,13 +31,13 @@ def split_english(sentence):
     words = []
     for space_separated_fragment in sentence.strip().split():
         words.extend(re.split(b"([.,!?\"':;)(])", space_separated_fragment))
-    for l in words:
-        print (l)
+    '''for l in words:
+        print (l)'''
     return [w for w in words if w]
 def split_chinese(sentence):
     line=re.split(u'【（。，！？、“：；）】',sentence.decode('utf-8'))
-    for l in line:
-        print (l)
+    '''for l in line:
+        print (l)'''
     ws=[]
     for words in line:
         for w in words:
@@ -107,8 +107,8 @@ def data_to_token_ids(data_path, target_path, vocabulary_path,ischinese):
                 token_ids = sentence_to_token_ids(line, vocab, ischinese)
                 tokens_file.write(" ".join([str(tok) for tok in token_ids]) + "\n")
 
-
-def prepare_wmt_data(data_dir,chi_vocabulary_size, eng_vocabulary_size, tokenizer=None):
+#根据训练数据创建词典，保存词典文件，并保存训练数据与词典之间的映射id文件
+def prepare_wmt_data(chi_vocabulary_size=400, eng_vocabulary_size=400):
   engdata_path ='data/english.utf8'
   chidata_path ='data/chinese.utf8'
 
@@ -127,5 +127,4 @@ def prepare_wmt_data(data_dir,chi_vocabulary_size, eng_vocabulary_size, tokenize
 
 
   return (eng_train_ids_path, chi_train_ids_path,
-          eng_train_ids_path, chi_train_ids_path,
           eng_vocab_path, chi_vocab_path)
